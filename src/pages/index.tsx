@@ -3,12 +3,9 @@ import Head from 'next/head';
 import Link from 'next/link';
 import Image from 'next/image';
 import { ArrowRight, Zap, Star, Shield, Loader2 } from 'lucide-react';
-import useSWR from 'swr';
 import ProductCard from '@/components/ProductCard';
 import CountdownTimer from '@/components/CountdownTimer';
-import { Product } from '@/data/products';
-
-const fetcher = (url: string) => fetch(url).then(res => res.json());
+import { Product, SAMPLE_PRODUCTS } from '@/data/products';
 
 const BRANDS = [
     { name: 'Nike', logo: 'NIKE' },
@@ -26,7 +23,10 @@ const TESTIMONIALS = [
 ];
 
 const Home: NextPage = () => {
-    const { data: products, error, isLoading } = useSWR<Product[]>('/api/products', fetcher);
+    // Use static data instead of API for GitHub Pages
+    const products = SAMPLE_PRODUCTS;
+    const isLoading = false;
+    const error = null;
 
     if (isLoading) return (
         <div className="min-h-screen flex flex-col items-center justify-center bg-brand-black text-white">

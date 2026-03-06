@@ -3,11 +3,8 @@ import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useState, useMemo } from 'react';
 import { SlidersHorizontal, X, Loader2 } from 'lucide-react';
-import useSWR from 'swr';
 import ProductCard from '@/components/ProductCard';
-import { Product } from '@/data/products';
-
-const fetcher = (url: string) => fetch(url).then(res => res.json());
+import { Product, SAMPLE_PRODUCTS } from '@/data/products';
 
 const BRANDS = ['All', 'Nike', 'Adidas', 'New Balance', 'PUMA', 'Fila', 'Jordan'];
 const ALL_SIZES = ['6', '7', '7.5', '8', '8.5', '9', '9.5', '10', '10.5', '11', '12'];
@@ -22,7 +19,10 @@ const Shop: NextPage = () => {
     const router = useRouter();
     const { filter } = router.query;
 
-    const { data: dbProducts, error, isLoading } = useSWR<Product[]>('/api/products', fetcher);
+    // Use static data instead of API for GitHub Pages
+    const dbProducts = SAMPLE_PRODUCTS;
+    const isLoading = false;
+    const error = null;
 
     const [selectedBrand, setSelectedBrand] = useState('All');
     const [selectedSize, setSelectedSize] = useState('');
@@ -31,7 +31,6 @@ const Shop: NextPage = () => {
     const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
     const filteredProducts = useMemo(() => {
-        if (!dbProducts) return [];
         let products = [...dbProducts];
 
         // URL filter
