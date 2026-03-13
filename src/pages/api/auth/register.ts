@@ -27,11 +27,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
-        // Create user
+        // Create user - Force role to 'user' to prevent self-promotion
         const user = await User.create({
             name,
             email,
             password: hashedPassword,
+            role: 'user'
         });
 
         if (user) {
