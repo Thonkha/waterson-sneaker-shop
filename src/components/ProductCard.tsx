@@ -1,8 +1,10 @@
 import Link from 'next/link';
 import Image from 'next/image';
-import { ShoppingCart, Star } from 'lucide-react';
+import { ShoppingCart, Star, Heart } from 'lucide-react';
 import { Product } from '@/data/products';
 import { useCart } from '@/context/CartContext';
+import { useWishlist } from '@/context/WishlistContext';
+import { useState } from 'react';
 
 interface ProductCardProps {
     product: Product & { image: string };
@@ -10,6 +12,8 @@ interface ProductCardProps {
 
 const ProductCard = ({ product }: ProductCardProps) => {
     const { addItem } = useCart();
+    const { isInWishlist, toggleWishlist } = useWishlist();
+    const [wishlistLoading, setWishlistLoading] = useState(false);
 
     const handleAddToCart = (e: React.MouseEvent) => {
         e.preventDefault();
@@ -25,6 +29,16 @@ const ProductCard = ({ product }: ProductCardProps) => {
             quantity: 1
         });
     };
+
+    const handleWishlist = async (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setWishlistLoading(true);
+        await toggleWishlist(product._id);
+        setWishlistLoading(false);
+    };
+
+    const isFav = isInWishlist(product._id);
 
     return (
         <Link href={`/product/${product.slug}`} className="group block h-full">
@@ -45,6 +59,15 @@ const ProductCard = ({ product }: ProductCardProps) => {
                         <span className="bg-brand-black text-white text-[10px] font-bold uppercase tracking-widest px-2 py-1">Limited</span>
                     )}
                 </div>
+
+                {/* Wishlist Button */}
+                <button
+                    onClick={handleWishlist}
+                    disabled={wishlistLoading}
+                    className="absolute top-3 right-3 p-2 bg-white/80 hover:bg-white rounded-full transition-colors z-10"
+                >
+                    <Heart className={`w-4 h-4 ${isFav ? 'fill-red-500 text-red-500' : 'text-zinc-400'}`} />
+                </button>
 
                 {/* Add to Cart Overlay */}
                 <div className="absolute inset-x-0 bottom-0 p-4 translate-y-full group-hover:translate-y-0 transition-transform bg-gradient-to-t from-black/80 to-transparent">

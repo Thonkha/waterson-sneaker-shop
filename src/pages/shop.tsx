@@ -1,10 +1,10 @@
 import type { NextPage } from 'next';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
-import { useState, useMemo } from 'react';
-import { SlidersHorizontal, X, Loader2 } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import useSWR from 'swr';
+import { SlidersHorizontal, X, Loader2, Search } from 'lucide-react';
 import ProductCard from '@/components/ProductCard';
-import { Product, SAMPLE_PRODUCTS } from '@/data/products';
 
 const BRANDS = ['All', 'Nike', 'Adidas', 'New Balance', 'PUMA', 'Fila', 'Jordan'];
 const ALL_SIZES = ['6', '7', '7.5', '8', '8.5', '9', '9.5', '10', '10.5', '11', '12'];
@@ -15,50 +15,53 @@ const PRICE_RANGES = [
     { label: 'Over R5000', min: 5000, max: Infinity },
 ];
 
+const fetcher = (url: string) => fetch(url).then(res => res.json());
+
 const Shop: NextPage = () => {
     const router = useRouter();
-    const { filter } = router.query;
-
-    // Use static data instead of API for GitHub Pages
-    const dbProducts = SAMPLE_PRODUCTS;
-    const isLoading = false;
-    const error = null;
+    const { filter, q } = router.query;
 
     const [selectedBrand, setSelectedBrand] = useState('All');
     const [selectedSize, setSelectedSize] = useState('');
     const [selectedPriceRange, setSelectedPriceRange] = useState<typeof PRICE_RANGES[number] | null>(null);
     const [sortBy, setSortBy] = useState('popular');
     const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+    const [searchQuery, setSearchQuery] = useState(q as string || '');
+
+    const apiUrl = useMemo(() => {
+        let url = `/api/products?`;
+        if (searchQuery) url += `search=${searchQuery}&`;
+        if (selectedBrand !== 'All') url += `brand=${selectedBrand}&`;
+        if (selectedPriceRange) {
+            url += `minPrice=${selectedPriceRange.min}&maxPrice=${selectedPriceRange.max}&`;
+        }
+        if (sortBy) url += `sort=${sortBy.replace('-', '_')}&`;
+        return url;
+    }, [searchQuery, selectedBrand, selectedPriceRange, sortBy]);
+
+    const { data: dbProducts, error, isLoading } = useSWR(apiUrl, fetcher);
 
     const filteredProducts = useMemo(() => {
+        if (!dbProducts) return [];
         let products = [...dbProducts];
 
-        // URL filter
-        if (filter === 'new') products = products.filter(p => p.isNewArrival);
-        if (filter === 'trending') products = products.filter(p => p.isTrending);
-        if (filter === 'sale') products = products.filter(p => p.price < 120);
+        // URL context filters (still applied client-side for immediate feedback if needed, but API handles core)
+        if (filter === 'new') products = products.filter((p: any) => p.isNewArrival);
+        if (filter === 'trending') products = products.filter((p: any) => p.isTrending);
+        if (filter === 'sale') products = products.filter((p: any) => p.price < 120);
 
-        // Sidebar filters
-        if (selectedBrand !== 'All') products = products.filter(p => p.brand === selectedBrand);
-        if (selectedSize) products = products.filter(p => p.sizes.includes(selectedSize));
-        if (selectedPriceRange) {
-            products = products.filter(p => p.price >= selectedPriceRange.min && p.price < selectedPriceRange.max);
-        }
-
-        // Sorting
-        if (sortBy === 'popular') products.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
-        if (sortBy === 'price-asc') products.sort((a, b) => a.price - b.price);
-        if (sortBy === 'price-desc') products.sort((a, b) => b.price - a.price);
-        if (sortBy === 'newest') products.sort((a, b) => (b.isNewArrival ? 1 : 0) - (a.isNewArrival ? 1 : 0));
+        // Client side size filtering as it's more efficient than complex mongo arrays for this scale
+        if (selectedSize) products = products.filter((p: any) => p.sizes.includes(selectedSize));
 
         return products;
-    }, [dbProducts, filter, selectedBrand, selectedSize, selectedPriceRange, sortBy]);
+    }, [dbProducts, filter, selectedSize]);
 
     const clearFilters = () => {
         setSelectedBrand('All');
         setSelectedSize('');
         setSelectedPriceRange(null);
         setSortBy('popular');
+        setSearchQuery('');
     };
 
     const FilterPanel = () => (
@@ -151,16 +154,27 @@ const Shop: NextPage = () => {
 
                     {/* Main Grid */}
                     <div>
-                        {/* Toolbar */}
-                        <div className="flex justify-between items-center mb-8 pb-4 border-b border-zinc-100">
-                            <p className="text-sm text-zinc-500">
-                                {isLoading ? 'Loading products...' : `${filteredProducts.length} products found`}
-                            </p>
-                            <div className="flex items-center gap-4">
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 pb-4 border-b border-zinc-100 gap-4">
+                            <div className="flex items-center gap-4 w-full md:w-auto">
+                                <div className="relative flex-1 md:w-64">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+                                    <input
+                                        type="text"
+                                        placeholder="Search sneakers..."
+                                        value={searchQuery}
+                                        onChange={e => setSearchQuery(e.target.value)}
+                                        className="w-full pl-10 pr-4 py-2 text-sm border border-zinc-200 focus:outline-none focus:border-brand-green"
+                                    />
+                                </div>
+                                <p className="hidden md:block text-sm text-zinc-500">
+                                    {isLoading ? 'Loading...' : `${filteredProducts.length} products`}
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-4 w-full md:w-auto justify-between">
                                 <select
                                     value={sortBy}
                                     onChange={e => setSortBy(e.target.value)}
-                                    className="text-sm border border-zinc-200 px-3 py-2 focus:outline-none focus:border-brand-green bg-white"
+                                    className="text-sm border border-zinc-200 px-3 py-2 focus:outline-none focus:border-brand-green bg-white flex-1 md:flex-none"
                                 >
                                     <option value="popular">Most Popular</option>
                                     <option value="newest">Newest</option>

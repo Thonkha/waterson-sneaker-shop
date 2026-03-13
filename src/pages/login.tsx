@@ -4,15 +4,54 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 
+import { useRouter } from 'next/router';
+import { useEffect } from 'react';
+
 const LoginPage: NextPage = () => {
+    const router = useRouter();
     const [showPassword, setShowPassword] = useState(false);
     const [form, setForm] = useState({ email: '', password: '' });
+    const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [successMsg, setSuccessMsg] = useState('');
+
+    useEffect(() => {
+        if (router.query.registered === 'true') {
+            setSuccessMsg('Account created successfully! Please sign in.');
+        }
+    }, [router.query]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => setForm(f => ({ ...f, [e.target.name]: e.target.value }));
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        alert('Login submitted! (Connect to your auth backend.)');
+        setError('');
+        setSuccessMsg('');
+        setLoading(true);
+
+        try {
+            const res = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(form),
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+                throw new Error(data.message || 'Invalid email or password');
+            }
+
+            // Save user data/token (In real app, use a more secure way or CartContext/AuthContext)
+            localStorage.setItem('user', JSON.stringify(data));
+
+            // Redirect to home or account
+            router.push('/');
+        } catch (err: any) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
@@ -31,6 +70,8 @@ const LoginPage: NextPage = () => {
                     </div>
 
                     <div className="bg-white border border-zinc-100 p-8">
+                        {successMsg && <div className="bg-green-50 border border-green-200 text-green-600 text-sm p-4 mb-6">{successMsg}</div>}
+                        {error && <div className="bg-red-50 border border-red-200 text-red-600 text-sm p-4 mb-6">{error}</div>}
                         <form onSubmit={handleSubmit} className="space-y-5">
                             <div>
                                 <label className="text-xs font-bold uppercase tracking-wider text-zinc-600 block mb-1.5">Email</label>
@@ -56,7 +97,9 @@ const LoginPage: NextPage = () => {
                                     <a href="#" className="text-xs text-zinc-400 hover:text-brand-green transition-colors">Forgot password?</a>
                                 </div>
                             </div>
-                            <button type="submit" className="btn-primary w-full">Sign In</button>
+                            <button type="submit" disabled={loading} className="btn-primary w-full disabled:opacity-50">
+                                {loading ? 'Signing In...' : 'Sign In'}
+                            </button>
                         </form>
 
                         <div className="mt-6 text-center text-sm text-zinc-500">

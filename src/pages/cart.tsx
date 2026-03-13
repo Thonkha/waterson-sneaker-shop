@@ -6,28 +6,17 @@ import { Trash2, ShoppingBag, ArrowRight, Tag, Truck, RefreshCw } from 'lucide-r
 import { useState } from 'react';
 import { SAMPLE_PRODUCTS } from '@/data/products';
 
-// Mock cart items for display purposes (in real app, use CartContext)
-const MOCK_ITEMS = [
-    { _id: '1', name: 'Air Hyper Eclipse', brand: 'Nike', slug: 'nike-air-hyper-eclipse', price: 189.99, image: SAMPLE_PRODUCTS[0].images[0], size: '10', quantity: 1 },
-    { _id: '3', name: 'Cloud Runner X', brand: 'New Balance', slug: 'newbalance-cloud-runner-x', price: 139.99, image: SAMPLE_PRODUCTS[2].images[0], size: '9', quantity: 2 },
-];
+import { useCart } from '@/context/CartContext';
 
 const CartPage: NextPage = () => {
-    const [items, setItems] = useState(MOCK_ITEMS);
+    const { items, updateQuantity, removeItem, total } = useCart();
     const [promo, setPromo] = useState('');
     const [promoApplied, setPromoApplied] = useState(false);
 
-    const updateQty = (id: string, size: string, qty: number) => {
-        if (qty < 1) { setItems(prev => prev.filter(i => !(i._id === id && i.size === size))); return; }
-        setItems(prev => prev.map(i => i._id === id && i.size === size ? { ...i, quantity: qty } : i));
-    };
-
-    const removeItem = (id: string, size: string) => setItems(prev => prev.filter(i => !(i._id === id && i.size === size)));
-
-    const subtotal = items.reduce((s, i) => s + i.price * i.quantity, 0);
-    const shipping = subtotal > 1500 ? 0 : 99.99;
+    const subtotal = total;
+    const shipping = subtotal > 1500 || subtotal === 0 ? 0 : 99.99;
     const discount = promoApplied ? subtotal * 0.1 : 0;
-    const total = subtotal + shipping - discount;
+    const finalTotal = subtotal + shipping - discount;
 
     const applyPromo = (e: React.FormEvent) => {
         e.preventDefault();
@@ -68,9 +57,9 @@ const CartPage: NextPage = () => {
                                             <p className="text-sm text-zinc-500 mt-1">Size: <span className="font-semibold text-zinc-700">{item.size}</span></p>
                                             <div className="flex items-center justify-between mt-4">
                                                 <div className="flex border border-zinc-200">
-                                                    <button onClick={() => updateQty(item._id, item.size, item.quantity - 1)} className="w-9 h-9 flex items-center justify-center hover:bg-zinc-50">−</button>
+                                                    <button onClick={() => updateQuantity(item._id, item.size, item.quantity - 1)} className="w-9 h-9 flex items-center justify-center hover:bg-zinc-50">−</button>
                                                     <span className="w-9 h-9 flex items-center justify-center font-bold text-sm">{item.quantity}</span>
-                                                    <button onClick={() => updateQty(item._id, item.size, item.quantity + 1)} className="w-9 h-9 flex items-center justify-center hover:bg-zinc-50">+</button>
+                                                    <button onClick={() => updateQuantity(item._id, item.size, item.quantity + 1)} className="w-9 h-9 flex items-center justify-center hover:bg-zinc-50">+</button>
                                                 </div>
                                                 <span className="font-bold text-lg">R{(item.price * item.quantity).toFixed(2)}</span>
                                                 <button onClick={() => removeItem(item._id, item.size)} className="text-zinc-300 hover:text-red-400 transition-colors">
@@ -97,7 +86,7 @@ const CartPage: NextPage = () => {
                                         </div>
                                     )}
                                     <div className="border-t border-zinc-100 pt-3 flex justify-between font-bold text-lg">
-                                        <span>Total</span><span>R{total.toFixed(2)}</span>
+                                        <span>Total</span><span>R{finalTotal.toFixed(2)}</span>
                                     </div>
                                 </div>
 

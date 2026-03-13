@@ -3,19 +3,47 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useState } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
+import { useRouter } from 'next/router';
 
 const RegisterPage: NextPage = () => {
+    const router = useRouter();
     const [showPassword, setShowPassword] = useState(false);
     const [form, setForm] = useState({ name: '', email: '', password: '', confirm: '' });
     const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => setForm(f => ({ ...f, [e.target.name]: e.target.value }));
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (form.password !== form.confirm) { setError('Passwords do not match.'); return; }
         setError('');
-        alert('Account created! (Connect to your auth backend.)');
+        setLoading(true);
+
+        try {
+            const res = await fetch('/api/auth/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: form.name,
+                    email: form.email,
+                    password: form.password
+                }),
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+                throw new Error(data.message || 'Something went wrong');
+            }
+
+            // Redirect to login on success
+            router.push('/login?registered=true');
+        } catch (err: any) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
@@ -57,7 +85,9 @@ const RegisterPage: NextPage = () => {
                                 <input type="password" name="confirm" value={form.confirm} onChange={handleChange} required placeholder="Repeat your password" className="w-full border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-brand-green transition-colors" />
                             </div>
                             {error && <p className="text-red-500 text-sm">{error}</p>}
-                            <button type="submit" className="btn-primary w-full">Create Account</button>
+                            <button type="submit" disabled={loading} className="btn-primary w-full disabled:opacity-50">
+                                {loading ? 'Creating Account...' : 'Create Account'}
+                            </button>
                         </form>
 
                         <div className="mt-6 text-center text-sm text-zinc-500">

@@ -1,36 +1,65 @@
-import type { NextPage, GetStaticPaths, GetStaticProps } from 'next';
+import type { NextPage, GetServerSideProps } from 'next';
 import Head from 'next/head';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useState } from 'react';
 import { ShoppingBag, Heart, Star, ChevronRight, Truck, RefreshCw } from 'lucide-react';
-import { SAMPLE_PRODUCTS, Product } from '@/data/products';
+import { Product } from '@/data/products';
 import ProductCard from '@/components/ProductCard';
+import { useCart } from '@/context/CartContext';
+import { useWishlist } from '@/context/WishlistContext';
+import { useRouter } from 'next/router';
+import dbConnect from '@/utils/db';
+import ProductModel from '@/models/Product';
 
 interface Props {
-    product: Product;
-    related: Product[];
+    product: any;
+    related: any[];
 }
 
 const ProductPage: NextPage<Props> = ({ product, related }) => {
+    const { addItem } = useCart();
+    const { isInWishlist, toggleWishlist } = useWishlist();
+    const router = useRouter();
     const [selectedImage, setSelectedImage] = useState(0);
     const [selectedSize, setSelectedSize] = useState('');
     const [quantity, setQuantity] = useState(1);
-    const [wishlist, setWishlist] = useState(false);
+    const [wishlistLoading, setWishlistLoading] = useState(false);
     const [sizeError, setSizeError] = useState(false);
+
+    const handleWishlist = async () => {
+        setWishlistLoading(true);
+        await toggleWishlist(product._id);
+        setWishlistLoading(false);
+    };
+
+    const isFav = isInWishlist(product._id);
 
     const handleAddToCart = () => {
         if (!selectedSize) { setSizeError(true); return; }
         setSizeError(false);
-        // Cart logic would dispatch to context here
-        alert(`Added ${quantity}x ${product.name} (Size ${selectedSize}) to cart!`);
+
+        addItem({
+            _id: product._id,
+            name: product.name,
+            brand: product.brand,
+            slug: product.slug,
+            price: product.price,
+            image: product.images[0],
+            size: selectedSize,
+            quantity: quantity
+        });
+
+        router.push('/cart');
     };
 
     return (
         <>
             <Head>
                 <title>{product.name} — Waterson Drip Store</title>
-                <meta name="description" content={product.description.slice(0, 155)} />
+                <meta name="description" content={product.description?.slice(0, 155)} />
+                <meta property="og:title" content={`${product.name} | Waterson Drip Store`} />
+                <meta property="og:image" content={product.images[0]} />
             </Head>
 
             {/* Breadcrumb */}
@@ -68,7 +97,7 @@ const ProductPage: NextPage<Props> = ({ product, related }) => {
                         {/* Thumbnails */}
                         {product.images.length > 1 && (
                             <div className="flex gap-3">
-                                {product.images.map((img, i) => (
+                                {product.images.map((img: string, i: number) => (
                                     <button
                                         key={i}
                                         onClick={() => setSelectedImage(i)}
@@ -113,7 +142,7 @@ const ProductPage: NextPage<Props> = ({ product, related }) => {
                             </div>
                             {sizeError && <p className="text-red-500 text-xs mb-2">Please select a size</p>}
                             <div className="flex flex-wrap gap-2">
-                                {product.sizes.map(s => (
+                                {product.sizes.map((s: string) => (
                                     <button
                                         key={s}
                                         onClick={() => { setSelectedSize(s); setSizeError(false); }}
@@ -136,10 +165,11 @@ const ProductPage: NextPage<Props> = ({ product, related }) => {
                                 <ShoppingBag className="w-5 h-5" /> Add to Cart
                             </button>
                             <button
-                                onClick={() => setWishlist(w => !w)}
-                                className={`w-14 border-2 flex items-center justify-center transition-colors ${wishlist ? 'border-red-400 text-red-400' : 'border-zinc-200 hover:border-red-400 hover:text-red-400'}`}
+                                onClick={handleWishlist}
+                                disabled={wishlistLoading}
+                                className={`w-14 border-2 flex items-center justify-center transition-colors ${isFav ? 'border-red-400 text-red-400' : 'border-zinc-200 hover:border-red-400 hover:text-red-400'}`}
                             >
-                                <Heart className={`w-5 h-5 ${wishlist ? 'fill-red-400' : ''}`} />
+                                <Heart className={`w-5 h-5 ${isFav ? 'fill-red-400' : ''}`} />
                             </button>
                         </div>
 
@@ -170,7 +200,7 @@ const ProductPage: NextPage<Props> = ({ product, related }) => {
                     <div className="mt-20">
                         <h2 className="text-3xl font-outfit font-black mb-8">Customer Reviews</h2>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {product.reviews.map((r, i) => (
+                            {product.reviews.map((r: any, i: number) => (
                                 <div key={i} className="bg-zinc-50 border border-zinc-100 p-6">
                                     <div className="flex mb-3">
                                         {[1, 2, 3, 4, 5].map(s => (
@@ -204,16 +234,23 @@ const ProductPage: NextPage<Props> = ({ product, related }) => {
     );
 };
 
-export const getStaticPaths: GetStaticPaths = async () => {
-    const paths = SAMPLE_PRODUCTS.map(p => ({ params: { slug: p.slug } }));
-    return { paths, fallback: false };
-};
+export const getServerSideProps: GetServerSideProps = async ({ params }) => {
+    await dbConnect();
+    const productData = await ProductModel.findOne({ slug: params?.slug }).lean();
 
-export const getStaticProps: GetStaticProps = async ({ params }) => {
-    const product = SAMPLE_PRODUCTS.find(p => p.slug === params?.slug);
-    if (!product) return { notFound: true };
-    const related = SAMPLE_PRODUCTS.filter(p => p.brand === product.brand && p._id !== product._id).slice(0, 4);
-    return { props: { product, related } };
+    if (!productData) return { notFound: true };
+
+    const relatedData = await ProductModel.find({
+        brand: productData.brand,
+        _id: { $ne: productData._id }
+    }).limit(4).lean();
+
+    return {
+        props: {
+            product: JSON.parse(JSON.stringify(productData)),
+            related: JSON.parse(JSON.stringify(relatedData))
+        }
+    };
 };
 
 export default ProductPage;

@@ -1,18 +1,42 @@
 import type { NextPage } from 'next';
 import Head from 'next/head';
 import Link from 'next/link';
-import { Package, Heart, MapPin, Settings, LogOut } from 'lucide-react';
-import { SAMPLE_PRODUCTS } from '@/data/products';
+import { useEffect, useState } from 'react';
+import useSWR from 'swr';
+import { Package, Heart, MapPin, Settings, LogOut, Loader2 } from 'lucide-react';
+import { useRouter } from 'next/router';
 
-const MOCK_ORDERS = [
-    { id: '#WAT82710', date: '2026-02-28', status: 'Delivered', total: 189.99, items: ['Air Hyper Eclipse'] },
-    { id: '#WAT91234', date: '2026-03-01', status: 'In Transit', total: 279.98, items: ['Cloud Runner X x2'] },
-];
-
-const mockUser = { name: 'Jordan Mitchell', email: 'jordan@example.com' };
-const wishlist = SAMPLE_PRODUCTS.filter(p => p.isTrending).slice(0, 3);
+const fetcher = async (url: string) => {
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    const res = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${user.token}` }
+    });
+    if (!res.ok) throw new Error('Failed to fetch');
+    return res.json();
+};
 
 const AccountPage: NextPage = () => {
+    const router = useRouter();
+    const [user, setUser] = useState<any>(null);
+    const { data: orders, isLoading: ordersLoading } = useSWR('/api/orders', fetcher);
+    const { data: wishlist, isLoading: wishlistLoading } = useSWR('/api/wishlist', fetcher);
+
+    useEffect(() => {
+        const userStr = localStorage.getItem('user');
+        if (!userStr) {
+            router.push('/login');
+        } else {
+            setUser(JSON.parse(userStr));
+        }
+    }, [router]);
+
+    const handleSignOut = () => {
+        localStorage.removeItem('user');
+        router.push('/login');
+    };
+
+    if (!user) return null;
+
     return (
         <>
             <Head>
@@ -25,11 +49,11 @@ const AccountPage: NextPage = () => {
                     <div className="flex items-center justify-between mb-10">
                         <div>
                             <h1 className="text-3xl font-outfit font-black">My Account</h1>
-                            <p className="text-zinc-500 text-sm mt-1">Welcome back, {mockUser.name}</p>
+                            <p className="text-zinc-500 text-sm mt-1">Welcome back, {user.name}</p>
                         </div>
-                        <Link href="/login" className="flex items-center gap-2 text-sm text-zinc-500 hover:text-red-500 transition-colors">
+                        <button onClick={handleSignOut} className="flex items-center gap-2 text-sm text-zinc-500 hover:text-red-500 transition-colors">
                             <LogOut className="w-4 h-4" /> Sign Out
-                        </Link>
+                        </button>
                     </div>
 
                     <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-8">
@@ -54,56 +78,66 @@ const AccountPage: NextPage = () => {
                                 <h2 className="font-outfit font-black text-xl mb-4 flex items-center gap-2">
                                     <Package className="w-5 h-5 text-brand-green" /> Order History
                                 </h2>
-                                <div className="space-y-4">
-                                    {MOCK_ORDERS.map(order => (
-                                        <div key={order.id} className="bg-white border border-zinc-100 p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                                            <div>
-                                                <p className="font-bold text-sm">{order.id}</p>
-                                                <p className="text-sm text-zinc-500 mt-0.5">{order.items.join(', ')}</p>
-                                                <p className="text-xs text-zinc-400 mt-1">{order.date}</p>
+
+                                {ordersLoading ? (
+                                    <div className="flex py-10 justify-center"><Loader2 className="w-6 h-6 animate-spin text-zinc-300" /></div>
+                                ) : !orders || orders.length === 0 ? (
+                                    <div className="bg-white border border-dashed border-zinc-200 py-12 text-center">
+                                        <p className="text-zinc-400 text-sm">You haven't placed any orders yet.</p>
+                                        <Link href="/shop" className="text-brand-green font-bold text-sm mt-2 inline-block">Start Shopping</Link>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-4">
+                                        {orders.map((order: any) => (
+                                            <div key={order._id} className="bg-white border border-zinc-100 p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                                                <div>
+                                                    <p className="font-bold text-sm">#{order._id.slice(-8).toUpperCase()}</p>
+                                                    <p className="text-sm text-zinc-500 mt-0.5">
+                                                        {order.orderItems.map((i: any) => i.name).join(', ')}
+                                                    </p>
+                                                    <p className="text-xs text-zinc-400 mt-1">{new Date(order.createdAt).toLocaleDateString()}</p>
+                                                </div>
+                                                <div className="flex items-center gap-6">
+                                                    <span className={`text-xs font-bold uppercase tracking-wider px-3 py-1 ${order.status === 'Delivered' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                        {order.status}
+                                                    </span>
+                                                    <span className="font-black">R{order.totalPrice.toFixed(2)}</span>
+                                                </div>
                                             </div>
-                                            <div className="flex items-center gap-6">
-                                                <span className={`text-xs font-bold uppercase tracking-wider px-3 py-1 ${order.status === 'Delivered' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
-                                                    {order.status}
-                                                </span>
-                                                <span className="font-black">R{order.total.toFixed(2)}</span>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
+                                        ))}
+                                    </div>
+                                )}
                             </section>
 
                             {/* Wishlist */}
                             <section id="wishlist">
-                                <h2 className="font-outfit font-black text-xl mb-4 flex items-center gap-2">
+                                <h2 className="font-outfit font-black text-xl mb-6 flex items-center gap-2">
                                     <Heart className="w-5 h-5 text-brand-green" /> Saved Sneakers
                                 </h2>
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                    {wishlist.map(p => (
-                                        <Link key={p._id} href={`/product/${p.slug}`} className="bg-white border border-zinc-100 p-4 hover:border-brand-green transition-colors flex items-center gap-4">
-                                            <div className="relative w-16 h-16 bg-zinc-100 flex-shrink-0">
-                                                <img src={p.images[0]} alt={p.name} className="w-full h-full object-cover" />
-                                            </div>
-                                            <div>
-                                                <p className="text-xs text-zinc-400">{p.brand}</p>
-                                                <p className="font-bold text-sm">{p.name}</p>
-                                                <p className="text-brand-green font-bold text-sm">R{p.price}</p>
-                                            </div>
-                                        </Link>
-                                    ))}
-                                </div>
-                            </section>
 
-                            {/* Addresses */}
-                            <section id="addresses">
-                                <h2 className="font-outfit font-black text-xl mb-4 flex items-center gap-2">
-                                    <MapPin className="w-5 h-5 text-brand-green" /> Saved Addresses
-                                </h2>
-                                <div className="bg-white border border-zinc-100 p-5 inline-block">
-                                    <p className="font-bold">{mockUser.name}</p>
-                                    <p className="text-sm text-zinc-500 mt-1">45 Drip Street, Polokwane, Limpopo, South Africa</p>
-                                    <span className="inline-block mt-2 text-xs font-bold text-brand-green uppercase tracking-wider">Default</span>
-                                </div>
+                                {wishlistLoading ? (
+                                    <div className="flex py-10 justify-center"><Loader2 className="w-6 h-6 animate-spin text-zinc-300" /></div>
+                                ) : !wishlist || wishlist.length === 0 ? (
+                                    <div className="bg-white border border-dashed border-zinc-200 py-12 text-center">
+                                        <p className="text-zinc-400 text-sm">Your wishlist is empty.</p>
+                                        <Link href="/shop" className="text-brand-green font-bold text-sm mt-2 inline-block">Find your next pair</Link>
+                                    </div>
+                                ) : (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        {wishlist.map((p: any) => (
+                                            <Link key={p._id} href={`/product/${p.slug}`} className="bg-white border border-zinc-100 p-4 hover:border-brand-green transition-colors flex items-center gap-4 group">
+                                                <div className="relative w-20 h-20 bg-zinc-100 flex-shrink-0 overflow-hidden">
+                                                    <img src={p.images[0]} alt={p.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                                                </div>
+                                                <div>
+                                                    <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">{p.brand}</p>
+                                                    <p className="font-bold text-sm line-clamp-1">{p.name}</p>
+                                                    <p className="text-brand-green font-black text-base mt-1">R{p.price.toFixed(2)}</p>
+                                                </div>
+                                            </Link>
+                                        ))}
+                                    </div>
+                                )}
                             </section>
                         </div>
                     </div>

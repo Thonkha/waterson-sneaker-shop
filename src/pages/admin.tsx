@@ -1,42 +1,144 @@
 import type { NextPage } from 'next';
 import Head from 'next/head';
 import { useState } from 'react';
-import { Package, ShoppingBag, TrendingUp, DollarSign, Plus, Pencil, Trash2, BarChart2 } from 'lucide-react';
+import { Package, ShoppingBag, TrendingUp, DollarSign, Plus, Pencil, Trash2, BarChart2, Loader2, Upload } from 'lucide-react';
 import { SAMPLE_PRODUCTS } from '@/data/products';
+import { uploadToCloudinary } from '@/utils/cloudinary';
 
-const MOCK_ORDERS = [
-    { id: '#WAT82710', customer: 'Jordan M.', date: '2026-02-28', status: 'Delivered', total: 189.99 },
-    { id: '#WAT91234', customer: 'Priya K.', date: '2026-03-01', status: 'In Transit', total: 220.00 },
-    { id: '#WAT99001', customer: 'Tyler N.', date: '2026-03-03', status: 'Processing', total: 99.99 },
-];
+import { useEffect } from 'react';
+import { useRouter } from 'next/router';
 
 const AdminPage: NextPage = () => {
+    const router = useRouter();
     const [activeTab, setActiveTab] = useState<'overview' | 'products' | 'orders'>('overview');
-    const [products, setProducts] = useState(SAMPLE_PRODUCTS);
+    const [products, setProducts] = useState<any[]>([]);
+    const [orders, setOrders] = useState<any[]>([]);
+    const [stats, setStats] = useState<any>({ totalRevenue: 0, totalProducts: 0, totalOrders: 0, avgOrderValue: 0 });
+    const [loading, setLoading] = useState(true);
+    const [uploading, setUploading] = useState(false);
     const [showAddForm, setShowAddForm] = useState(false);
-    const [newProduct, setNewProduct] = useState({ name: '', brand: '', price: '', stock: '' });
+    const [newProduct, setNewProduct] = useState({ name: '', brand: '', price: '', stock: '', description: '', images: '' });
 
-    const handleDeleteProduct = (id: string) => {
-        if (confirm('Delete this product?')) setProducts(prev => prev.filter(p => p._id !== id));
+    useEffect(() => {
+        const userStr = localStorage.getItem('user');
+        const user = userStr ? JSON.parse(userStr) : null;
+        if (!user || user.role !== 'admin') {
+            router.push('/login');
+            return;
+        }
+        fetchData();
+    }, [activeTab]);
+
+    const fetchData = async () => {
+        setLoading(true);
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        const token = user.token;
+        const headers = { 'Authorization': `Bearer ${token}` };
+
+        try {
+            if (activeTab === 'overview') {
+                const [statsRes, ordersRes] = await Promise.all([
+                    fetch('/api/admin/stats', { headers }),
+                    fetch('/api/admin/orders', { headers })
+                ]);
+                setStats(await statsRes.json());
+                setOrders(await ordersRes.json());
+            } else if (activeTab === 'products') {
+                const res = await fetch('/api/admin/products', { headers });
+                setProducts(await res.json());
+            } else if (activeTab === 'orders') {
+                const res = await fetch('/api/admin/orders', { headers });
+                setOrders(await res.json());
+            }
+        } catch (error) {
+            console.error('Error fetching data:', error);
+        } finally {
+            setLoading(false);
+        }
     };
 
-    const handleAddProduct = (e: React.FormEvent) => {
+    const handleDeleteProduct = async (id: string) => {
+        if (!confirm('Delete this product?')) return;
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        const token = user.token;
+
+        try {
+            const res = await fetch(`/api/admin/products/${id}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) fetchData();
+        } catch (error) {
+            console.error('Error deleting product:', error);
+        }
+    };
+
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setUploading(true);
+        try {
+            const url = await uploadToCloudinary(file);
+            setNewProduct(p => ({ ...p, images: url }));
+        } catch (error) {
+            console.error('Upload failed:', error);
+            alert('Image upload failed. Please try again.');
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    const handleAddProduct = async (e: React.FormEvent) => {
         e.preventDefault();
-        const product = {
-            ...SAMPLE_PRODUCTS[0],
-            _id: String(Date.now()),
-            name: newProduct.name,
-            brand: newProduct.brand,
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        const token = user.token;
+
+        const productData = {
+            ...newProduct,
             price: parseFloat(newProduct.price),
             stock: parseInt(newProduct.stock),
             slug: newProduct.name.toLowerCase().replace(/\s+/g, '-'),
+            images: [newProduct.images || 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?q=80&w=2070&auto=format&fit=crop'],
+            sizes: ['7', '8', '9', '10', '11', '12'],
         };
-        setProducts(prev => [product, ...prev]);
-        setNewProduct({ name: '', brand: '', price: '', stock: '' });
-        setShowAddForm(false);
+
+        try {
+            const res = await fetch('/api/admin/products', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify(productData)
+            });
+            if (res.ok) {
+                fetchData();
+                setNewProduct({ name: '', brand: '', price: '', stock: '', description: '', images: '' });
+                setShowAddForm(false);
+            }
+        } catch (error) {
+            console.error('Error adding product:', error);
+        }
     };
 
-    const totalRevenue = MOCK_ORDERS.reduce((s, o) => s + o.total, 0);
+    const handleUpdateOrderStatus = async (id: string, status: string) => {
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        const token = user.token;
+
+        try {
+            const res = await fetch('/api/admin/orders', {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ id, status })
+            });
+            if (res.ok) fetchData();
+        } catch (error) {
+            console.error('Error updating order status:', error);
+        }
+    };
 
     return (
         <>
@@ -77,10 +179,10 @@ const AdminPage: NextPage = () => {
                                 <h1 className="text-2xl font-outfit font-black mb-8">Dashboard Overview</h1>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
                                     {[
-                                        { label: 'Total Revenue', value: `R${totalRevenue.toFixed(2)}`, icon: DollarSign, color: 'bg-brand-green' },
-                                        { label: 'Total Products', value: products.length, icon: ShoppingBag, color: 'bg-blue-500' },
-                                        { label: 'Total Orders', value: MOCK_ORDERS.length, icon: Package, color: 'bg-purple-500' },
-                                        { label: 'Avg Order Value', value: `R${(totalRevenue / MOCK_ORDERS.length).toFixed(2)}`, icon: TrendingUp, color: 'bg-orange-500' },
+                                        { label: 'Total Revenue', value: `R${stats.totalRevenue.toFixed(2)}`, icon: DollarSign, color: 'bg-brand-green' },
+                                        { label: 'Total Products', value: stats.totalProducts, icon: ShoppingBag, color: 'bg-blue-500' },
+                                        { label: 'Total Orders', value: stats.totalOrders, icon: Package, color: 'bg-purple-500' },
+                                        { label: 'Avg Order Value', value: `R${stats.avgOrderValue.toFixed(2)}`, icon: TrendingUp, color: 'bg-orange-500' },
                                     ].map(({ label, value, icon: Icon, color }) => (
                                         <div key={label} className="bg-zinc-900 border border-zinc-800 p-6 rounded">
                                             <div className={`${color} w-10 h-10 rounded flex items-center justify-center mb-4`}>
@@ -105,17 +207,17 @@ const AdminPage: NextPage = () => {
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-zinc-800">
-                                            {MOCK_ORDERS.map(o => (
-                                                <tr key={o.id}>
-                                                    <td className="py-3 font-mono text-brand-green">{o.id}</td>
-                                                    <td className="py-3">{o.customer}</td>
-                                                    <td className="py-3 text-zinc-400">{o.date}</td>
+                                            {orders.slice(0, 5).map(o => (
+                                                <tr key={o._id}>
+                                                    <td className="py-3 font-mono text-brand-green line-clamp-1">#{o._id.slice(-6).toUpperCase()}</td>
+                                                    <td className="py-3">{o.shippingAddress.fullName}</td>
+                                                    <td className="py-3 text-zinc-400">{new Date(o.createdAt).toLocaleDateString()}</td>
                                                     <td className="py-3">
-                                                        <span className={`px-2 py-0.5 text-xs font-bold rounded-full ${o.status === 'Delivered' ? 'bg-green-900 text-green-400' : o.status === 'In Transit' ? 'bg-blue-900 text-blue-400' : 'bg-yellow-900 text-yellow-400'}`}>
-                                                            {o.status}
+                                                        <span className={`px-2 py-0.5 text-xs font-bold rounded-full ${o.isDelivered ? 'bg-green-900 text-green-400' : 'bg-yellow-900 text-yellow-400'}`}>
+                                                            {o.isDelivered ? 'Delivered' : 'Processing'}
                                                         </span>
                                                     </td>
-                                                    <td className="py-3 text-right font-bold">R{o.total.toFixed(2)}</td>
+                                                    <td className="py-3 text-right font-bold">R{o.totalPrice.toFixed(2)}</td>
                                                 </tr>
                                             ))}
                                         </tbody>
@@ -140,8 +242,19 @@ const AdminPage: NextPage = () => {
                                         <input required value={newProduct.brand} onChange={e => setNewProduct(p => ({ ...p, brand: e.target.value }))} placeholder="Brand" className="bg-zinc-800 border border-zinc-700 px-4 py-2.5 text-sm focus:outline-none focus:border-brand-green" />
                                         <input required type="number" value={newProduct.price} onChange={e => setNewProduct(p => ({ ...p, price: e.target.value }))} placeholder="Price (R)" className="bg-zinc-800 border border-zinc-700 px-4 py-2.5 text-sm focus:outline-none focus:border-brand-green" />
                                         <input required type="number" value={newProduct.stock} onChange={e => setNewProduct(p => ({ ...p, stock: e.target.value }))} placeholder="Stock" className="bg-zinc-800 border border-zinc-700 px-4 py-2.5 text-sm focus:outline-none focus:border-brand-green" />
-                                        <div className="col-span-2 flex gap-3">
-                                            <button type="submit" className="btn-primary px-6">Save Product</button>
+
+                                        <div className="flex flex-col gap-2">
+                                            <label className="text-xs text-zinc-500 uppercase font-bold tracking-widest">Product Image</label>
+                                            <div className="flex gap-4 items-center">
+                                                <div className="relative w-24 h-24 bg-zinc-800 border border-zinc-700 flex items-center justify-center overflow-hidden">
+                                                    {uploading ? <Loader2 className="w-6 h-6 animate-spin text-brand-green" /> : newProduct.images ? <img src={newProduct.images} className="w-full h-full object-cover" /> : <Upload className="w-6 h-6 text-zinc-600" />}
+                                                </div>
+                                                <input type="file" accept="image/*" onChange={handleImageUpload} className="text-xs text-zinc-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-zinc-800 file:text-brand-green hover:file:bg-zinc-700" />
+                                            </div>
+                                        </div>
+
+                                        <div className="col-span-2 flex gap-3 mt-4">
+                                            <button type="submit" disabled={uploading} className="btn-primary px-6 disabled:opacity-50">Save Product</button>
                                             <button type="button" onClick={() => setShowAddForm(false)} className="btn-outline border-zinc-600 text-zinc-400 px-6">Cancel</button>
                                         </div>
                                     </form>
@@ -191,7 +304,7 @@ const AdminPage: NextPage = () => {
                         {/* Orders */}
                         {activeTab === 'orders' && (
                             <div>
-                                <h1 className="text-2xl font-outfit font-black mb-6">Orders ({MOCK_ORDERS.length})</h1>
+                                <h1 className="text-2xl font-outfit font-black mb-6">Orders ({orders.length})</h1>
                                 <div className="bg-zinc-900 border border-zinc-800 rounded overflow-hidden">
                                     <table className="w-full text-sm">
                                         <thead>
@@ -204,17 +317,27 @@ const AdminPage: NextPage = () => {
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-zinc-800">
-                                            {MOCK_ORDERS.map(o => (
-                                                <tr key={o.id} className="hover:bg-zinc-800/50 transition-colors">
-                                                    <td className="px-6 py-4 font-mono text-brand-green">{o.id}</td>
-                                                    <td className="px-4 py-4">{o.customer}</td>
-                                                    <td className="px-4 py-4 text-zinc-400">{o.date}</td>
+                                            {orders.map(o => (
+                                                <tr key={o._id} className="hover:bg-zinc-800/50 transition-colors">
+                                                    <td className="px-6 py-4 font-mono text-brand-green">#{o._id.slice(-6).toUpperCase()}</td>
+                                                    <td className="px-4 py-4">{o.shippingAddress.fullName}</td>
+                                                    <td className="px-4 py-4 text-zinc-400">{new Date(o.createdAt).toLocaleDateString()}</td>
                                                     <td className="px-4 py-4">
-                                                        <span className={`px-2 py-0.5 text-xs font-bold rounded-full ${o.status === 'Delivered' ? 'bg-green-900 text-green-400' : o.status === 'In Transit' ? 'bg-blue-900 text-blue-400' : 'bg-yellow-900 text-yellow-400'}`}>
-                                                            {o.status}
+                                                        <span className={`px-2 py-0.5 text-xs font-bold rounded-full ${o.isDelivered ? 'bg-green-900 text-green-400' : 'bg-yellow-900 text-yellow-400'}`}>
+                                                            {o.isDelivered ? 'Delivered' : 'Processing'}
                                                         </span>
                                                     </td>
-                                                    <td className="px-6 py-4 text-right font-bold">R{o.total.toFixed(2)}</td>
+                                                    <td className="px-6 py-4 text-right font-bold">R{o.totalPrice.toFixed(2)}</td>
+                                                    <td className="px-6 py-4 text-right">
+                                                        {!o.isDelivered && (
+                                                            <button
+                                                                onClick={() => handleUpdateOrderStatus(o._id, 'Delivered')}
+                                                                className="text-xs text-brand-green hover:underline"
+                                                            >
+                                                                Mark Delivered
+                                                            </button>
+                                                        )}
+                                                    </td>
                                                 </tr>
                                             ))}
                                         </tbody>
